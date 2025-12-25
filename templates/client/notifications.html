@@ -1,0 +1,24 @@
+{% extends "client/base.html" %}
+{% set active = "client_notifications" %}
+{% set page_title = "Уведомления" %}
+{% block content %}
+<div class="card">
+  <div class="card-title">
+    <h3>Сообщения</h3>
+    <p>Подтверждения и напоминания</p>
+  </div>
+  <form method="post" style="margin-top: 12px;">
+    <button class="btn" type="submit"><i class="fa-solid fa-check-double"></i> Отметить все прочитанными</button>
+  </form>
+  <div style="margin-top: 14px; display: grid; gap: 12px;">
+    {% for note in notifications %}
+      <div style="padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: {{ '#F0F9FF' if not note.is_read else 'transparent' }};">
+        <div style="font-size: 13px;">{{ note.message }}</div>
+        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">{{ note.created_at.strftime("%d.%m.%Y %H:%M") }}</div>
+      </div>
+    {% else %}
+      <p style="color: var(--text-secondary); font-size: 13px;">Уведомлений нет.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

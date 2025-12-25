@@ -1,0 +1,236 @@
+{% set active = active or '' %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title or "Клиент • Батутный центр" }}</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    :root {
+      --primary: #0EA5E9;
+      --primary-dark: #0284C7;
+      --background: #FFFFFF;
+      --background-secondary: #F8FAFC;
+      --text-primary: #1E293B;
+      --text-secondary: #64748B;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --error: #EF4444;
+      --border: #E2E8F0;
+      --shadow: rgba(0, 0, 0, 0.08);
+      --sidebar-width: 220px;
+      --radius: 12px;
+    }
+    body { background-color: var(--background-secondary); color: var(--text-primary); line-height: 1.5; }
+    a { color: inherit; }
+
+    .app-container { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: var(--sidebar-width);
+      background-color: var(--background);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      height: 100vh;
+      z-index: 10;
+    }
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 24px;
+      padding-left: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .nav-item i { margin-right: 12px; width: 20px; text-align: center; }
+    .nav-item:hover { background-color: var(--background-secondary); color: var(--text-primary); }
+    .nav-item.active { background-color: var(--primary); color: white; font-weight: 500; }
+
+    .user-profile {
+      margin-top: auto;
+      padding: 16px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .user-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #38BDF8);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+    .user-info h4 { font-size: 14px; font-weight: 600; }
+    .user-info p { font-size: 12px; color: var(--text-secondary); }
+
+    .main-content {
+      flex-grow: 1;
+      margin-left: var(--sidebar-width);
+      padding: 32px;
+      min-height: 100vh;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .header h1 { font-size: 28px; font-weight: 600; }
+    .pill {
+      color: var(--text-secondary);
+      font-size: 13px;
+      background-color: var(--background);
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .card {
+      background-color: var(--background);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .card-title h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .card-title p { font-size: 13px; color: var(--text-secondary); }
+
+    .btn {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--background-secondary);
+      color: var(--text-primary);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+    .btn:hover { background-color: var(--border); }
+    .btn-primary { background-color: var(--primary); color: white; }
+    .btn-primary:hover { background-color: var(--primary-dark); }
+
+    .input, .select, .textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 14px;
+      background: var(--background);
+      color: var(--text-primary);
+    }
+    .label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { font-size: 12px; text-transform: uppercase; color: var(--text-secondary); }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background-color: var(--background-secondary);
+      border-radius: 999px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .alert {
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .alert.success { background: #ECFDF5; color: #047857; }
+    .alert.warning { background: #FFFBEB; color: #B45309; }
+    .alert.danger { background: #FEF2F2; color: #B91C1C; }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <aside class="sidebar">
+      <div class="logo"><i class="fa-solid fa-person-jumping"></i> JumpClient</div>
+      <nav>
+        <a href="{{ url_for('client_dashboard') }}" class="nav-item {% if active=='client_dashboard' %}active{% endif %}">
+          <i class="fa-solid fa-house"></i><span>Главная</span>
+        </a>
+        <a href="{{ url_for('client_schedule') }}" class="nav-item {% if active=='client_schedule' %}active{% endif %}">
+          <i class="fa-regular fa-calendar"></i><span>Расписание</span>
+        </a>
+        <a href="{{ url_for('client_bookings') }}" class="nav-item {% if active=='client_bookings' %}active{% endif %}">
+          <i class="fa-solid fa-ticket"></i><span>Мои брони</span>
+        </a>
+        <a href="{{ url_for('client_subscriptions') }}" class="nav-item {% if active=='client_subscriptions' %}active{% endif %}">
+          <i class="fa-solid fa-id-card-clip"></i><span>Абонементы</span>
+        </a>
+        <a href="{{ url_for('client_notifications') }}" class="nav-item {% if active=='client_notifications' %}active{% endif %}">
+          <i class="fa-regular fa-bell"></i><span>Уведомления</span>
+        </a>
+        <a href="{{ url_for('client_profile') }}" class="nav-item {% if active=='client_profile' %}active{% endif %}">
+          <i class="fa-regular fa-user"></i><span>Профиль</span>
+        </a>
+        <a href="{{ url_for('logout') }}" class="nav-item">
+          <i class="fa-solid fa-right-from-bracket"></i><span>Выйти</span>
+        </a>
+      </nav>
+      <div class="user-profile">
+        {% set initials = (current_user.login[:2] if current_user.login else 'CL')|upper %}
+        <div class="user-avatar">{{ initials }}</div>
+        <div class="user-info">
+          <h4>{{ current_user.login }}</h4>
+          <p>Клиент</p>
+        </div>
+      </div>
+    </aside>
+    <main class="main-content">
+      <header class="header">
+        <h1>{{ page_title or "" }}</h1>
+        <div class="pill"><i class="fa-regular fa-circle-user"></i> {{ current_user.login }}</div>
+      </header>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, msg in messages %}
+            <div class="alert {{ category }}">{{ msg }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

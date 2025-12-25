@@ -1,0 +1,55 @@
+{% extends "client/base.html" %}
+{% set active = "client_bookings" %}
+{% set page_title = "Бронь №" ~ booking.id %}
+{% block content %}
+<div class="grid" style="margin-bottom: 18px;">
+  <div class="card">
+    <div class="card-title">
+      <h3>Детали брони</h3>
+      <p>{{ booking.zone.zone_name }}</p>
+    </div>
+    <div style="margin-top: 10px; display: grid; gap: 6px;">
+      <div>Дата: <strong>{{ booking.datetime_from.strftime("%d.%m.%Y %H:%M") }}</strong></div>
+      <div>Участники: <strong>{{ booking.participants_count }}</strong></div>
+      <div>Статус: <strong>{{ booking.status.name }}</strong></div>
+      {% if booking.subscription %}
+        <div>Абонемент: <strong>{{ booking.subscription.service.name if booking.subscription.service else "На все зоны" }}</strong></div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <h3>Оплата</h3>
+      <p>Состояние платежей</p>
+    </div>
+    <div style="margin-top: 10px;">
+      <div>Итого: <strong>{{ "%.2f"|format(booking.total_sum or 0) }}</strong></div>
+      <div>Оплачено: <strong>{{ "%.2f"|format(paid) }}</strong></div>
+    </div>
+    <div style="margin-top: 12px;">
+      <a class="btn btn-primary" href="{{ url_for('client_booking_pay', booking_id=booking.id) }}">Оплатить</a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <h3>Услуги</h3>
+    <p>Дополнительные услуги в брони</p>
+  </div>
+  <div style="margin-top: 12px;">
+    {% if booking.services %}
+      <ul style="list-style: none; display: grid; gap: 8px;">
+        {% for line in booking.services %}
+          <li style="display:flex; justify-content: space-between;">
+            <span>{{ line.service.name }} × {{ line.qty }}</span>
+            <span>{{ "%.2f"|format(line.line_sum) }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p style="color: var(--text-secondary); font-size: 13px;">Дополнительных услуг нет.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

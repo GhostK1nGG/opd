@@ -256,6 +256,7 @@ def login():
 
 @app.post("/login")
 def login_post():
+    seed_if_empty()
     login_ = request.form.get("login", "").strip()
     pwd = request.form.get("password", "")
     with db_session() as s:

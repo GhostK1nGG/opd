@@ -1,0 +1,101 @@
+{% extends "client/base.html" %}
+{% set active = "client_schedule" %}
+{% set page_title = "Расписание" %}
+{% block content %}
+<div class="card" style="margin-bottom: 18px;">
+  <div class="card-title">
+    <h3>Фильтры</h3>
+    <p>Подберите слот по дате, времени и зоне</p>
+  </div>
+  <form method="get" style="margin-top: 14px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+    <div>
+      <label class="label">Дата</label>
+      <input class="input" type="date" name="date" value="{{ filters.date }}">
+    </div>
+    <div>
+      <label class="label">Время от</label>
+      <input class="input" type="time" name="time_from" value="{{ filters.time_from }}">
+    </div>
+    <div>
+      <label class="label">Время до</label>
+      <input class="input" type="time" name="time_to" value="{{ filters.time_to }}">
+    </div>
+    <div>
+      <label class="label">Зона</label>
+      <select class="select" name="zone_id">
+        <option value="">Все зоны</option>
+        {% for zone in zones %}
+          <option value="{{ zone.id }}" {% if filters.zone_id == zone.id|string %}selected{% endif %}>{{ zone.zone_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">Тип занятия</label>
+      <select class="select" name="lesson_type">
+        <option value="">Любой</option>
+        <option value="group" {% if filters.lesson_type == "group" %}selected{% endif %}>Групповое</option>
+        <option value="individual" {% if filters.lesson_type == "individual" %}selected{% endif %}>Индивидуальное</option>
+      </select>
+    </div>
+    <div>
+      <label class="label">Тренер</label>
+      <select class="select" name="employee_id">
+        <option value="">Любой</option>
+        {% for employee in employees %}
+          <option value="{{ employee.id }}" {% if filters.employee_id == employee.id|string %}selected{% endif %}>{{ employee.full_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:flex; align-items: flex-end;">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Найти</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <h3>Доступные слоты</h3>
+    <p>Выберите время и оформите бронь</p>
+  </div>
+  <div class="table-wrap" style="margin-top: 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Время</th>
+          <th>Зона</th>
+          <th>Тренер</th>
+          <th>Тип</th>
+          <th>Мест</th>
+          <th>Цена</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for slot in slots %}
+          {% set booked = booked_map.get(slot.id, 0) %}
+          {% set available = slot.capacity - booked %}
+          <tr>
+            <td>{{ slot.datetime_from.strftime("%d.%m.%Y") }}</td>
+            <td>{{ slot.datetime_from.strftime("%H:%M") }} — {{ slot.datetime_to.strftime("%H:%M") }}</td>
+            <td>{{ slot.zone.zone_name }}</td>
+            <td>{{ slot.employee.full_name if slot.employee else "—" }}</td>
+            <td>{{ "Групповое" if slot.lesson_type == "group" else "Индивидуальное" }}</td>
+            <td>{{ available }}</td>
+            <td>{{ "%.2f"|format(slot.price) }}</td>
+            <td style="text-align:right;">
+              {% if available > 0 %}
+                <a class="btn btn-primary" href="{{ url_for('client_booking_create', slot_id=slot.id) }}">Забронировать</a>
+              {% else %}
+                <span class="badge">Нет мест</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" style="color: var(--text-secondary); padding: 18px;">Нет доступных слотов</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -5,7 +5,7 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from flask_login import UserMixin
-from sqlalchemy import String, Integer, Date, DateTime, Text, Numeric, ForeignKey
+from sqlalchemy import String, Integer, Date, DateTime, Text, Numeric, ForeignKey, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -59,9 +59,13 @@ class Client(Base):
     phone: Mapped[Optional[str]] = mapped_column(String)
     email: Mapped[Optional[str]] = mapped_column(String)
     note: Mapped[Optional[str]] = mapped_column(Text)
+    status_id: Mapped[Optional[int]] = mapped_column(ForeignKey("client_status.id"))
 
     bookings: Mapped[list["Booking"]] = relationship(back_populates="client")
     accounts: Mapped[list["Account"]] = relationship(back_populates="client")
+    status: Mapped[Optional["ClientStatus"]] = relationship(back_populates="clients")
+    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="client")
+    notifications: Mapped[list["Notification"]] = relationship(back_populates="client")
 
 
 class Employee(Base):
@@ -133,6 +137,8 @@ class Booking(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), nullable=False)
     zone_id: Mapped[int] = mapped_column(ForeignKey("zone.id"), nullable=False)
+    schedule_slot_id: Mapped[Optional[int]] = mapped_column(ForeignKey("schedule_slot.id"))
+    subscription_id: Mapped[Optional[int]] = mapped_column(ForeignKey("subscription.id"))
 
     datetime_from: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     datetime_to: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -148,6 +154,8 @@ class Booking(Base):
     client: Mapped["Client"] = relationship(back_populates="bookings")
     zone: Mapped["Zone"] = relationship(back_populates="bookings")
     status: Mapped["BookingStatus"] = relationship(back_populates="bookings")
+    schedule_slot: Mapped[Optional["ScheduleSlot"]] = relationship(back_populates="bookings")
+    subscription: Mapped[Optional["Subscription"]] = relationship(back_populates="bookings")
 
     payments: Mapped[list["Payment"]] = relationship(back_populates="booking")
     services: Mapped[list["BookingService"]] = relationship(back_populates="booking")
@@ -200,3 +208,66 @@ class Payment(Base):
     created_by_employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employee.id"), nullable=True)
 
     booking: Mapped["Booking"] = relationship(back_populates="payments")
+
+
+class ClientStatus(Base):
+    __tablename__ = "client_status"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    clients: Mapped[list["Client"]] = relationship(back_populates="status")
+
+
+class ScheduleSlot(Base):
+    __tablename__ = "schedule_slot"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("zone.id"), nullable=False)
+    employee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("employee.id"))
+    datetime_from: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    datetime_to: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    lesson_type: Mapped[str] = mapped_column(String, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    zone: Mapped["Zone"] = relationship()
+    employee: Mapped[Optional["Employee"]] = relationship()
+    bookings: Mapped[list["Booking"]] = relationship(back_populates="schedule_slot")
+
+
+class SubscriptionStatus(Base):
+    __tablename__ = "subscription_status"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="status")
+
+
+class Subscription(Base):
+    __tablename__ = "subscription"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), nullable=False)
+    service_id: Mapped[Optional[int]] = mapped_column(ForeignKey("service.id"))
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    total_visits: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_visits: Mapped[int] = mapped_column(Integer, nullable=False)
+    status_id: Mapped[int] = mapped_column(ForeignKey("subscription_status.id"), nullable=False)
+
+    client: Mapped["Client"] = relationship(back_populates="subscriptions")
+    service: Mapped[Optional["Service"]] = relationship()
+    status: Mapped["SubscriptionStatus"] = relationship(back_populates="subscriptions")
+    bookings: Mapped[list["Booking"]] = relationship(back_populates="subscription")
+
+
+class Notification(Base):
+    __tablename__ = "notification"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    client: Mapped["Client"] = relationship(back_populates="notifications")

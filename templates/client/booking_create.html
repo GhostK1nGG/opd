@@ -1,0 +1,59 @@
+{% extends "client/base.html" %}
+{% set active = "client_schedule" %}
+{% set page_title = "Новая бронь" %}
+{% block content %}
+<div class="card" style="margin-bottom: 18px;">
+  <div class="card-title">
+    <h3>{{ slot.zone.zone_name }}</h3>
+    <p>{{ slot.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ slot.datetime_to.strftime("%H:%M") }}</p>
+  </div>
+  <div style="margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap;">
+    <span class="badge">Мест доступно: {{ available }}</span>
+    <span class="badge">Цена за человека: {{ "%.2f"|format(slot.price) }}</span>
+    <span class="badge">Тренер: {{ slot.employee.full_name if slot.employee else "Без тренера" }}</span>
+  </div>
+</div>
+
+<form method="post" class="card">
+  <div class="card-title">
+    <h3>Параметры брони</h3>
+    <p>Укажите участников, услуги и абонемент</p>
+  </div>
+  <div style="display:grid; gap: 14px; margin-top: 14px;">
+    <div>
+      <label class="label">Количество участников</label>
+      <input class="input" type="number" min="1" max="{{ available }}" name="participants_count" value="1" required>
+    </div>
+    <div>
+      <label class="label">Абонемент</label>
+      <select class="select" name="subscription_id">
+        <option value="">Не использовать</option>
+        {% for sub in subscriptions %}
+          <option value="{{ sub.id }}">{{ sub.service.name if sub.service else "Абонемент на все зоны" }} • осталось {{ sub.remaining_visits }}</option>
+        {% endfor %}
+      </select>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-top: 6px;">
+        При выборе абонемента стоимость занятия обнуляется, списываются посещения.
+      </div>
+    </div>
+    <div>
+      <label class="label">Дополнительные услуги</label>
+      <div style="display:grid; gap: 10px;">
+        {% for service in services %}
+          <div style="display:flex; justify-content: space-between; gap: 12px; align-items: center;">
+            <div>
+              <div style="font-weight: 600;">{{ service.name }}</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">{{ service.description or "" }}</div>
+            </div>
+            <div style="display:flex; gap: 8px; align-items: center;">
+              <span style="font-size: 12px; color: var(--text-secondary);">{{ "%.2f"|format(service.base_price) }}</span>
+              <input class="input" style="max-width: 90px;" type="number" min="0" name="service_{{ service.id }}_qty" placeholder="0">
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check"></i> Оформить бронь</button>
+  </div>
+</form>
+{% endblock %}

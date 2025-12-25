@@ -1,0 +1,51 @@
+{% extends "coach/base.html" %}
+{% set active = "coach_schedule_create" %}
+{% set page_title = "Смена тренера" %}
+{% block content %}
+<div class="card">
+  <div class="card-title">
+    <h3>{{ "Редактирование слота" if slot else "Новый слот" }}</h3>
+    <p>Заполните время, зону и параметры занятия</p>
+  </div>
+  <form method="post" style="margin-top: 14px; display: grid; gap: 12px; max-width: 520px;">
+    <div>
+      <label class="label">Зона</label>
+      <select class="select" name="zone_id" required>
+        {% for zone in zones %}
+          <option value="{{ zone.id }}" {% if slot and slot.zone_id == zone.id %}selected{% endif %}>{{ zone.zone_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">Начало</label>
+      <input class="input" type="datetime-local" name="datetime_from" value="{{ slot.datetime_from.strftime('%Y-%m-%dT%H:%M') if slot }}" required>
+    </div>
+    <div>
+      <label class="label">Окончание</label>
+      <input class="input" type="datetime-local" name="datetime_to" value="{{ slot.datetime_to.strftime('%Y-%m-%dT%H:%M') if slot }}" required>
+    </div>
+    <div>
+      <label class="label">Вместимость</label>
+      <input class="input" type="number" min="1" name="capacity" value="{{ slot.capacity if slot }}">
+    </div>
+    <div>
+      <label class="label">Цена за человека</label>
+      <input class="input" type="number" min="0" step="0.01" name="price" value="{{ slot.price if slot }}">
+    </div>
+    <div>
+      <label class="label">Тип занятия</label>
+      <select class="select" name="lesson_type">
+        <option value="group" {% if not slot or slot.lesson_type == "group" %}selected{% endif %}>Групповое</option>
+        <option value="individual" {% if slot and slot.lesson_type == "individual" %}selected{% endif %}>Индивидуальное</option>
+      </select>
+    </div>
+    <div>
+      <label class="label">
+        <input type="checkbox" name="is_active" {% if not slot or slot.is_active %}checked{% endif %}>
+        Активен
+      </label>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Сохранить</button>
+  </form>
+</div>
+{% endblock %}

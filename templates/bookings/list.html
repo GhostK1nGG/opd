@@ -24,6 +24,8 @@
           <th>ID</th>
           <th>Клиент</th>
           <th>Зона</th>
+          <th>Тренер</th>
+          <th>Тип</th>
           <th>Период</th>
           <th style="text-align:right;">Итого</th>
           <th style="text-align:right;">Оплачено</th>
@@ -40,6 +42,14 @@
             <td>#{{ b.id }}</td>
             <td>{{ b.client.full_name }}</td>
             <td>{{ b.zone.zone_name }}</td>
+            <td>{{ b.schedule_slot.employee.full_name if b.schedule_slot and b.schedule_slot.employee else "—" }}</td>
+            <td>
+              {% if b.schedule_slot %}
+                {{ "Групповое" if b.schedule_slot.lesson_type == "group" else "Индивидуальное" }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
             <td style="color: var(--text-secondary); font-size: 13px;">
               {{ b.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ b.datetime_to.strftime("%H:%M") }}
             </td>
@@ -52,7 +62,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="9" style="color: var(--text-secondary); padding: 18px;">Нет бронирований</td></tr>
+          <tr><td colspan="11" style="color: var(--text-secondary); padding: 18px;">Нет бронирований</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -327,6 +327,9 @@
         <a href="{{ url_for('clients_list') }}" class="nav-item {% if active=='clients' %}active{% endif %}">
           <i class="fa-solid fa-users"></i><span>Клиенты</span>
         </a>
+        <a href="{{ url_for('trainers_list') }}" class="nav-item {% if active=='trainers' %}active{% endif %}">
+          <i class="fa-solid fa-person-chalkboard"></i><span>Тренеры</span>
+        </a>
 
         <div class="nav-section">Аккаунт</div>
         <a href="{{ url_for('account_password') }}" class="nav-item {% if active=='password' %}active{% endif %}">

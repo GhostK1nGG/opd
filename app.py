@@ -35,9 +35,9 @@ app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
 app.config["SEEDED"] = False
 
-@app.before_first_request
-def ensure_seed_data():
-    seed_if_empty()
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
 
 # --- FORCE LOGIN FOR ALL PAGES (кроме /login и статики) ---
 from flask import request
@@ -1580,6 +1580,147 @@ def client_delete(item_id: int):
     return redirect(url_for("clients_list"))
 
 
+# ---- Trainers ----
+@app.get("/trainers")
+@login_required
+@admin_required
+def trainers_list():
+    with db_session() as s:
+        trainers = (
+            s.execute(
+                select(Employee)
+                .join(Position)
+                .where(Position.code == "trainer")
+                .order_by(Employee.id.desc())
+            )
+            .scalars()
+            .all()
+        )
+        trainer_ids = [t.id for t in trainers]
+        slot_counts = {}
+        if trainer_ids:
+            rows = s.execute(
+                select(ScheduleSlot.employee_id, func.count(ScheduleSlot.id))
+                .where(ScheduleSlot.employee_id.in_(trainer_ids))
+                .group_by(ScheduleSlot.employee_id)
+            ).all()
+            slot_counts = {employee_id: count for employee_id, count in rows}
+
+    rows = [{
+        "cells": [
+            t.id,
+            t.full_name,
+            (t.phone or ""),
+            (t.email or ""),
+            slot_counts.get(t.id, 0),
+        ],
+        "edit_url": url_for("trainer_edit", item_id=t.id),
+        "delete_url": url_for("trainer_delete", item_id=t.id),
+    } for t in trainers]
+    return render_list(
+        "Тренеры",
+        ["ID", "ФИО", "Телефон", "Email", "Слотов"],
+        rows,
+        url_for("trainer_create"),
+        active="trainers",
+    )
+
+
+@app.route("/trainers/create", methods=["GET", "POST"])
+@login_required
+@admin_required
+def trainer_create():
+    with db_session() as s:
+        trainer_position = s.execute(select(Position).where(Position.code == "trainer")).scalar_one_or_none()
+        if not trainer_position:
+            flash("Не найдена должность trainer. Создайте её в справочнике должностей.", "danger")
+            return redirect(url_for("trainers_list"))
+
+        if request.method == "POST":
+            full_name = request.form.get("full_name", "").strip()
+            phone = request.form.get("phone", "").strip() or None
+            email = request.form.get("email", "").strip() or None
+            note = request.form.get("note", "").strip() or None
+            if not full_name:
+                flash("Заполни ФИО", "warning")
+                return redirect(url_for("trainer_create"))
+
+            s.add(
+                Employee(
+                    full_name=full_name,
+                    phone=phone,
+                    email=email,
+                    note=note,
+                    position_id=trainer_position.id,
+                )
+            )
+            s.commit()
+            flash("Тренер добавлен", "success")
+            return redirect(url_for("trainers_list"))
+
+    fields = [
+        {"name": "full_name", "label": "ФИО", "type": "text", "required": True, "col": "col-md-8"},
+        {"name": "phone", "label": "Телефон", "type": "text", "required": False, "col": "col-md-4"},
+        {"name": "email", "label": "Email", "type": "email", "required": False, "col": "col-md-6"},
+        {"name": "note", "label": "Примечание", "type": "textarea", "required": False, "col": "col-md-6"},
+    ]
+    return render_form("Добавить тренера", fields, url_for("trainers_list"), active="trainers")
+
+
+@app.route("/trainers/<int:item_id>/edit", methods=["GET", "POST"])
+@login_required
+@admin_required
+def trainer_edit(item_id: int):
+    with db_session() as s:
+        trainer = (
+            s.execute(
+                select(Employee)
+                .join(Position)
+                .where(Employee.id == item_id, Position.code == "trainer")
+            )
+            .scalar_one_or_none()
+        )
+        if not trainer:
+            flash("Тренер не найден", "danger")
+            return redirect(url_for("trainers_list"))
+
+        if request.method == "POST":
+            trainer.full_name = request.form.get("full_name", "").strip()
+            trainer.phone = request.form.get("phone", "").strip() or None
+            trainer.email = request.form.get("email", "").strip() or None
+            trainer.note = request.form.get("note", "").strip() or None
+            s.commit()
+            flash("Сохранено", "success")
+            return redirect(url_for("trainers_list"))
+
+    fields = [
+        {"name": "full_name", "label": "ФИО", "type": "text", "required": True, "value": trainer.full_name, "col": "col-md-8"},
+        {"name": "phone", "label": "Телефон", "type": "text", "required": False, "value": trainer.phone, "col": "col-md-4"},
+        {"name": "email", "label": "Email", "type": "email", "required": False, "value": trainer.email, "col": "col-md-6"},
+        {"name": "note", "label": "Примечание", "type": "textarea", "required": False, "value": trainer.note, "col": "col-md-6"},
+    ]
+    return render_form("Редактировать тренера", fields, url_for("trainers_list"), active="trainers")
+
+
+@app.post("/trainers/<int:item_id>/delete")
+@login_required
+@admin_required
+def trainer_delete(item_id: int):
+    with db_session() as s:
+        trainer = (
+            s.execute(
+                select(Employee)
+                .join(Position)
+                .where(Employee.id == item_id, Position.code == "trainer")
+            )
+            .scalar_one_or_none()
+        )
+        if trainer:
+            s.delete(trainer)
+            s.commit()
+            flash("Удалено", "success")
+    return redirect(url_for("trainers_list"))
+
 # ---- Bookings ----
 @app.get("/bookings")
 @login_required
@@ -1589,7 +1730,12 @@ def bookings_list():
         bookings = (
             s.execute(
                 select(Booking)
-                .options(joinedload(Booking.client), joinedload(Booking.zone), joinedload(Booking.status))
+                .options(
+                    joinedload(Booking.client),
+                    joinedload(Booking.zone),
+                    joinedload(Booking.status),
+                    joinedload(Booking.schedule_slot).joinedload(ScheduleSlot.employee),
+                )
                 .order_by(Booking.id.desc())
                 .limit(200)
             )
@@ -1688,6 +1834,7 @@ def booking_view(booking_id: int):
                     joinedload(Booking.client),
                     joinedload(Booking.zone),
                     joinedload(Booking.status),
+                    joinedload(Booking.schedule_slot).joinedload(ScheduleSlot.employee),
                     selectinload(Booking.services).selectinload(BookingService.service),
                     joinedload(Booking.visit),
                 )

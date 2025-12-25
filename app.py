@@ -1,14 +1,14 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from db import engine, SessionLocal
@@ -16,24 +16,24 @@ from models import (
     Base,
     Account,
     ZoneType, ZoneStatus, Zone,
+    Position, Employee,
     BookingStatus,
     Service,
     Client,
+    ClientStatus,
     Booking,
     BookingService,
     Visit,
     Payment,
+    ScheduleSlot,
+    SubscriptionStatus,
+    Subscription,
+    Notification,
 )
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
-
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
-app = Flask(__name__)
-app.secret_key = "dev-secret-change-me"
+app.config["SEEDED"] = False
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -42,10 +42,13 @@ login_manager.login_view = "login"
 # --- FORCE LOGIN FOR ALL PAGES (кроме /login и статики) ---
 from flask import request
 
-PUBLIC_ENDPOINTS = {"login", "login_post", "static"}
+PUBLIC_ENDPOINTS = {"login", "login_post", "client_register", "static"}
 
 @app.before_request
 def force_auth():
+    if not app.config.get("SEEDED"):
+        seed_if_empty()
+        app.config["SEEDED"] = True
     if request.endpoint is None:
         return
     if request.endpoint in PUBLIC_ENDPOINTS:
@@ -89,6 +92,30 @@ def admin_required(fn):
     return wrapper
 
 
+def client_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if getattr(current_user, "role", "") != "client":
+            flash("Этот раздел доступен только клиентам", "warning")
+            return redirect(url_for("dashboard"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def coach_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if getattr(current_user, "role", "") != "coach":
+            flash("Этот раздел доступен только тренерам", "warning")
+            return redirect(url_for("dashboard"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def parse_dt_local(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%dT%H:%M")
 
@@ -106,6 +133,15 @@ def seed_if_empty():
     """
     Base.metadata.create_all(engine)
     with db_session() as s:
+        def ensure_column(table: str, column: str, ddl: str) -> None:
+            cols = [row[1] for row in s.execute(text(f"PRAGMA table_info({table})")).fetchall()]
+            if column not in cols:
+                s.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+
+        ensure_column("client", "status_id", "status_id INTEGER")
+        ensure_column("booking", "schedule_slot_id", "schedule_slot_id INTEGER")
+        ensure_column("booking", "subscription_id", "subscription_id INTEGER")
+
         # учётка администратора по умолчанию
         if not s.execute(select(Account).where(Account.login == "admin")).scalar_one_or_none():
             s.add(Account(login="admin", password_hash=generate_password_hash("admin"), role="admin"))
@@ -126,13 +162,36 @@ def seed_if_empty():
         ensure(BookingStatus, "confirmed", "Подтверждена")
         ensure(BookingStatus, "cancelled", "Отменена")
         ensure(BookingStatus, "done", "Завершена")
+        ensure(ClientStatus, "active", "Активен")
+        ensure(ClientStatus, "blocked", "Заблокирован")
+        ensure(SubscriptionStatus, "active", "Активен")
+        ensure(SubscriptionStatus, "expired", "Истёк")
+        ensure(SubscriptionStatus, "paused", "Приостановлен")
 
         # протолкнуть вставки справочников до выборок/связей
         s.flush()
 
         # демо-клиент
         if s.execute(select(func.count(Client.id))).scalar_one() == 0:
-            s.add(Client(full_name="Иванов Иван", phone="+7 900 000-00-00"))
+            status = s.execute(select(ClientStatus).where(ClientStatus.code == "active")).scalar_one()
+            s.add(Client(full_name="Иванов Иван", phone="+7 900 000-00-00", status_id=status.id))
+        else:
+            status = s.execute(select(ClientStatus).where(ClientStatus.code == "active")).scalar_one()
+            s.execute(text("UPDATE client SET status_id = :sid WHERE status_id IS NULL"), {"sid": status.id})
+
+        if not s.execute(select(Account).where(Account.login == "client")).scalar_one_or_none():
+            demo_client = s.execute(select(Client).order_by(Client.id)).scalars().first()
+            if not demo_client:
+                status = s.execute(select(ClientStatus).where(ClientStatus.code == "active")).scalar_one()
+                demo_client = Client(
+                    full_name="Клиент Пример",
+                    phone="+7 900 111-22-33",
+                    email="client@example.com",
+                    status_id=status.id,
+                )
+                s.add(demo_client)
+                s.flush()
+            s.add(Account(login="client", password_hash=generate_password_hash("client"), role="client", client_id=demo_client.id))
 
         # демо-зона
         if s.execute(select(func.count(Zone.id))).scalar_one() == 0:
@@ -155,6 +214,63 @@ def seed_if_empty():
             s.add(Service(name="Аренда шкафчика", base_price=money(100), description="На время посещения"))
             s.add(Service(name="Инструктор (30 мин)", base_price=money(500), description="Персональная тренировка"))
 
+        # демо-должность и тренер
+        trainer_position = s.execute(select(Position).where(Position.code == "trainer")).scalar_one_or_none()
+        if not trainer_position:
+            trainer_position = Position(code="trainer", name="Тренер", description="Инструктор на батутной арене")
+            s.add(trainer_position)
+            s.flush()
+        trainer_employee = (
+            s.execute(select(Employee).where(Employee.position_id == trainer_position.id))
+            .scalars()
+            .first()
+        )
+        if not trainer_employee:
+            trainer_employee = Employee(
+                full_name="Петрова Анна",
+                position_id=trainer_position.id,
+                phone="+7 900 555-66-77",
+                email="trainer@example.com",
+            )
+            s.add(trainer_employee)
+            s.flush()
+
+        # демо-слоты расписания
+        if s.execute(select(func.count(ScheduleSlot.id))).scalar_one() == 0:
+            zone = s.execute(select(Zone).order_by(Zone.id)).scalars().first()
+            trainer = trainer_employee or s.execute(select(Employee).order_by(Employee.id)).scalars().first()
+            if zone:
+                now = datetime.now().replace(minute=0, second=0, microsecond=0)
+                for i in range(1, 6):
+                    start = now.replace(hour=10 + i)
+                    s.add(
+                        ScheduleSlot(
+                            zone_id=zone.id,
+                            employee_id=trainer.id if trainer else None,
+                            datetime_from=start,
+                            datetime_to=start.replace(hour=start.hour + 1),
+                            capacity=zone.capacity,
+                            price=zone.base_price,
+                            lesson_type="group",
+                        )
+                    )
+
+        coach_account = s.execute(select(Account).where(Account.login == "coach")).scalar_one_or_none()
+        if trainer_employee:
+            if coach_account:
+                coach_account.password_hash = generate_password_hash("coach")
+                coach_account.role = "coach"
+                coach_account.employee_id = trainer_employee.id
+            else:
+                s.add(
+                    Account(
+                        login="coach",
+                        password_hash=generate_password_hash("coach"),
+                        role="coach",
+                        employee_id=trainer_employee.id,
+                    )
+                )
+
         s.commit()
 
 # ---- auth ----
@@ -165,12 +281,17 @@ def login():
 
 @app.post("/login")
 def login_post():
+    seed_if_empty()
     login_ = request.form.get("login", "").strip()
     pwd = request.form.get("password", "")
     with db_session() as s:
         acc = s.execute(select(Account).where(Account.login == login_)).scalar_one_or_none()
         if acc and check_password_hash(acc.password_hash, pwd):
             login_user(acc)
+            if acc.role == "client":
+                return redirect(url_for("client_dashboard"))
+            if acc.role == "coach":
+                return redirect(url_for("coach_dashboard"))
             return redirect(url_for("dashboard"))
     flash("Неверный логин или пароль", "danger")
     return redirect(url_for("login"))
@@ -215,10 +336,700 @@ def account_password():
     return render_template("account/password.html")
 
 
+# ---- client auth & dashboard ----
+@app.route("/client/register", methods=["GET", "POST"])
+def client_register():
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        phone = request.form.get("phone", "").strip() or None
+        email = request.form.get("email", "").strip() or None
+        dob_raw = request.form.get("dob", "").strip()
+        login_ = request.form.get("login", "").strip()
+        pwd = request.form.get("password", "")
+        pwd2 = request.form.get("password2", "")
+
+        if not full_name or not login_ or not pwd:
+            flash("Заполни обязательные поля", "warning")
+            return redirect(url_for("client_register"))
+        if pwd != pwd2:
+            flash("Пароли не совпадают", "danger")
+            return redirect(url_for("client_register"))
+
+        dob = datetime.strptime(dob_raw, "%Y-%m-%d").date() if dob_raw else None
+
+        with db_session() as s:
+            if s.execute(select(Account).where(Account.login == login_)).scalar_one_or_none():
+                flash("Такой логин уже занят", "danger")
+                return redirect(url_for("client_register"))
+            status = s.execute(select(ClientStatus).where(ClientStatus.code == "active")).scalar_one()
+            client = Client(full_name=full_name, phone=phone, email=email, dob=dob, status_id=status.id)
+            s.add(client)
+            s.flush()
+            acc = Account(login=login_, password_hash=generate_password_hash(pwd), role="client", client_id=client.id)
+            s.add(acc)
+            s.commit()
+            login_user(acc)
+        flash("Учётная запись создана", "success")
+        return redirect(url_for("client_dashboard"))
+
+    return render_template("client/register.html")
+
+
+@app.get("/client")
+@login_required
+@client_required
+def client_dashboard():
+    with db_session() as s:
+        client = (
+            s.execute(select(Client).options(joinedload(Client.status)).where(Client.id == current_user.client_id))
+            .scalar_one()
+        )
+        upcoming = (
+            s.execute(
+                select(Booking)
+                .options(joinedload(Booking.zone), joinedload(Booking.status))
+                .where(Booking.client_id == client.id)
+                .order_by(Booking.datetime_from.asc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+        subscriptions = (
+            s.execute(
+                select(Subscription)
+                .options(joinedload(Subscription.status), joinedload(Subscription.service))
+                .where(Subscription.client_id == client.id)
+                .order_by(Subscription.end_date.asc())
+            )
+            .scalars()
+            .all()
+        )
+        notifications = (
+            s.execute(
+                select(Notification)
+                .where(Notification.client_id == client.id)
+                .order_by(Notification.created_at.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+    return render_template(
+        "client/dashboard.html",
+        client=client,
+        upcoming=upcoming,
+        subscriptions=subscriptions,
+        notifications=notifications,
+    )
+
+
+def _client_schedule_filters():
+    date_raw = request.args.get("date", "").strip()
+    time_from = request.args.get("time_from", "").strip()
+    time_to = request.args.get("time_to", "").strip()
+    zone_id = request.args.get("zone_id", "").strip()
+    lesson_type = request.args.get("lesson_type", "").strip()
+    employee_id = request.args.get("employee_id", "").strip()
+    return date_raw, time_from, time_to, zone_id, lesson_type, employee_id
+
+
+@app.get("/client/schedule")
+@login_required
+@client_required
+def client_schedule():
+    date_raw, time_from, time_to, zone_id, lesson_type, employee_id = _client_schedule_filters()
+    with db_session() as s:
+        query = select(ScheduleSlot).options(joinedload(ScheduleSlot.zone), joinedload(ScheduleSlot.employee)).where(
+            ScheduleSlot.is_active.is_(True)
+        )
+        if date_raw:
+            query = query.where(func.date(ScheduleSlot.datetime_from) == date_raw)
+        if time_from:
+            query = query.where(func.strftime("%H:%M", ScheduleSlot.datetime_from) >= time_from)
+        if time_to:
+            query = query.where(func.strftime("%H:%M", ScheduleSlot.datetime_from) <= time_to)
+        if zone_id and zone_id.isdigit():
+            query = query.where(ScheduleSlot.zone_id == int(zone_id))
+        if lesson_type:
+            query = query.where(ScheduleSlot.lesson_type == lesson_type)
+        if employee_id and employee_id.isdigit():
+            query = query.where(ScheduleSlot.employee_id == int(employee_id))
+
+        slots = s.execute(query.order_by(ScheduleSlot.datetime_from.asc())).scalars().all()
+        slot_ids = [slot.id for slot in slots]
+        booked_map = {}
+        if slot_ids:
+            booked_rows = s.execute(
+                select(Booking.schedule_slot_id, func.coalesce(func.sum(Booking.participants_count), 0))
+                .join(Booking.status)
+                .where(Booking.schedule_slot_id.in_(slot_ids), BookingStatus.code != "cancelled")
+                .group_by(Booking.schedule_slot_id)
+            ).all()
+            booked_map = {slot_id: qty for slot_id, qty in booked_rows}
+        zones = s.execute(select(Zone).order_by(Zone.zone_name)).scalars().all()
+        employees = s.execute(select(Employee).order_by(Employee.full_name)).scalars().all()
+    return render_template(
+        "client/schedule.html",
+        slots=slots,
+        booked_map=booked_map,
+        zones=zones,
+        employees=employees,
+        filters={
+            "date": date_raw,
+            "time_from": time_from,
+            "time_to": time_to,
+            "zone_id": zone_id,
+            "lesson_type": lesson_type,
+            "employee_id": employee_id,
+        },
+    )
+
+
+@app.route("/client/schedule/<int:slot_id>/book", methods=["GET", "POST"])
+@login_required
+@client_required
+def client_booking_create(slot_id: int):
+    with db_session() as s:
+        slot = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone), joinedload(ScheduleSlot.employee))
+                .where(ScheduleSlot.id == slot_id)
+            )
+            .scalar_one_or_none()
+        )
+        if not slot:
+            flash("Слот не найден", "danger")
+            return redirect(url_for("client_schedule"))
+
+        booked = (
+            s.execute(
+                select(func.coalesce(func.sum(Booking.participants_count), 0))
+                .join(Booking.status)
+                .where(Booking.schedule_slot_id == slot_id, BookingStatus.code != "cancelled")
+            ).scalar_one()
+            or 0
+        )
+        available = max(slot.capacity - int(booked), 0)
+        services = s.execute(select(Service).order_by(Service.name)).scalars().all()
+        subscriptions = (
+            s.execute(
+                select(Subscription)
+                .options(joinedload(Subscription.status), joinedload(Subscription.service))
+                .where(
+                    Subscription.client_id == current_user.client_id,
+                    Subscription.remaining_visits > 0,
+                    Subscription.end_date >= datetime.utcnow().date(),
+                )
+                .order_by(Subscription.end_date.asc())
+            )
+            .scalars()
+            .all()
+        )
+        subscription_map = {sub.id: sub for sub in subscriptions}
+
+        if request.method == "POST":
+            participants_raw = request.form.get("participants_count", "1")
+            subscription_id = request.form.get("subscription_id") or None
+            try:
+                participants = int(participants_raw)
+            except ValueError:
+                participants = 1
+            if participants <= 0:
+                participants = 1
+            if participants > available:
+                flash("Недостаточно свободных мест", "warning")
+                return redirect(url_for("client_booking_create", slot_id=slot_id))
+
+            status = s.execute(select(BookingStatus).where(BookingStatus.code == "new")).scalar_one()
+            session_sum = money(Decimal(str(slot.price)) * participants)
+            subscription = None
+            if subscription_id:
+                subscription = subscription_map.get(int(subscription_id)) if subscription_id.isdigit() else None
+                if not subscription or subscription.remaining_visits < participants:
+                    flash("Недостаточно посещений в абонементе", "warning")
+                    return redirect(url_for("client_booking_create", slot_id=slot_id))
+                subscription.remaining_visits -= participants
+                session_sum = money(0)
+
+            booking = Booking(
+                client_id=current_user.client_id,
+                zone_id=slot.zone_id,
+                schedule_slot_id=slot.id,
+                subscription_id=subscription.id if subscription else None,
+                datetime_from=slot.datetime_from,
+                datetime_to=slot.datetime_to,
+                participants_count=participants,
+                session_sum=session_sum,
+                total_sum=session_sum,
+                status_id=status.id,
+            )
+            s.add(booking)
+            s.flush()
+
+            for service in services:
+                qty_raw = request.form.get(f"service_{service.id}_qty", "").strip()
+                if not qty_raw:
+                    continue
+                try:
+                    qty = int(qty_raw)
+                except ValueError:
+                    continue
+                if qty <= 0:
+                    continue
+                line_sum = money(Decimal(str(service.base_price)) * qty)
+                s.add(
+                    BookingService(
+                        booking_id=booking.id,
+                        service_id=service.id,
+                        qty=qty,
+                        unit_price=service.base_price,
+                        line_sum=line_sum,
+                    )
+                )
+
+            recalc_booking_total(s, booking.id)
+            s.add(
+                Notification(
+                    client_id=current_user.client_id,
+                    message=f"Бронь №{booking.id} создана и ожидает оплаты.",
+                )
+            )
+            s.commit()
+            flash("Бронь создана", "success")
+            return redirect(url_for("client_booking_view", booking_id=booking.id))
+
+    return render_template(
+        "client/booking_create.html",
+        slot=slot,
+        available=available,
+        services=services,
+        subscriptions=subscriptions,
+    )
+
+
+@app.get("/client/bookings")
+@login_required
+@client_required
+def client_bookings():
+    with db_session() as s:
+        bookings = (
+            s.execute(
+                select(Booking)
+                .options(
+                    joinedload(Booking.zone),
+                    joinedload(Booking.status),
+                    joinedload(Booking.visit),
+                    joinedload(Booking.schedule_slot).joinedload(ScheduleSlot.employee),
+                )
+                .where(Booking.client_id == current_user.client_id)
+                .order_by(Booking.datetime_from.desc())
+            )
+            .scalars()
+            .all()
+        )
+        paid_rows = s.execute(
+            select(Payment.booking_id, func.coalesce(func.sum(Payment.amount), 0))
+            .where(Payment.booking_id.in_([b.id for b in bookings] or [0]))
+            .group_by(Payment.booking_id)
+        ).all()
+        paid_map = {bid: total for bid, total in paid_rows}
+    now = datetime.utcnow()
+    visit_status_map = {}
+    for booking in bookings:
+        if booking.status and booking.status.code == "cancelled":
+            visit_status = "Отменено"
+        elif booking.visit and booking.visit.checkout_at:
+            visit_status = "Прошло"
+        elif booking.datetime_to < now:
+            visit_status = "Неявка"
+        else:
+            visit_status = "Запланировано"
+        visit_status_map[booking.id] = visit_status
+    return render_template(
+        "client/bookings.html",
+        bookings=bookings,
+        paid_map=paid_map,
+        visit_status_map=visit_status_map,
+    )
+
+
+@app.get("/client/bookings/<int:booking_id>")
+@login_required
+@client_required
+def client_booking_view(booking_id: int):
+    with db_session() as s:
+        booking = (
+            s.execute(
+                select(Booking)
+                .options(
+                    joinedload(Booking.zone),
+                    joinedload(Booking.status),
+                    joinedload(Booking.services).joinedload(BookingService.service),
+                    joinedload(Booking.payments),
+                    joinedload(Booking.subscription).joinedload(Subscription.service),
+                )
+                .where(Booking.id == booking_id, Booking.client_id == current_user.client_id)
+            )
+            .scalar_one_or_none()
+        )
+        if not booking:
+            flash("Бронь не найдена", "danger")
+            return redirect(url_for("client_bookings"))
+        paid = sum(float(p.amount) for p in booking.payments)
+    return render_template("client/booking_view.html", booking=booking, paid=paid)
+
+
+@app.route("/client/bookings/<int:booking_id>/pay", methods=["GET", "POST"])
+@login_required
+@client_required
+def client_booking_pay(booking_id: int):
+    with db_session() as s:
+        booking = (
+            s.execute(
+                select(Booking)
+                .options(joinedload(Booking.payments), joinedload(Booking.status))
+                .where(Booking.id == booking_id, Booking.client_id == current_user.client_id)
+            )
+            .scalar_one_or_none()
+        )
+        if not booking:
+            flash("Бронь не найдена", "danger")
+            return redirect(url_for("client_bookings"))
+        total_paid = sum(float(p.amount) for p in booking.payments)
+        total_sum = float(booking.total_sum or 0)
+        due = max(total_sum - total_paid, 0.0)
+
+        if request.method == "POST":
+            method = request.form.get("method", "card")
+            if due <= 0:
+                flash("Бронь уже оплачена", "warning")
+                return redirect(url_for("client_booking_view", booking_id=booking_id))
+            payment = Payment(booking_id=booking.id, amount=money(due), method=method)
+            s.add(payment)
+            status = s.execute(select(BookingStatus).where(BookingStatus.code == "confirmed")).scalar_one()
+            booking.status_id = status.id
+            s.add(
+                Notification(
+                    client_id=current_user.client_id,
+                    message=f"Оплата по брони №{booking.id} принята. Бронь подтверждена.",
+                )
+            )
+            s.commit()
+            flash("Оплата прошла успешно", "success")
+            return redirect(url_for("client_booking_view", booking_id=booking_id))
+
+    return render_template(
+        "client/booking_pay.html",
+        booking=booking,
+        total_sum=total_sum,
+        total_paid=total_paid,
+        due=due,
+    )
+
+
+@app.route("/client/profile", methods=["GET", "POST"])
+@login_required
+@client_required
+def client_profile():
+    with db_session() as s:
+        client = s.get(Client, current_user.client_id)
+        if request.method == "POST":
+            client.full_name = request.form.get("full_name", "").strip()
+            client.phone = request.form.get("phone", "").strip() or None
+            client.email = request.form.get("email", "").strip() or None
+            dob_raw = request.form.get("dob", "").strip()
+            client.dob = datetime.strptime(dob_raw, "%Y-%m-%d").date() if dob_raw else None
+            s.commit()
+            flash("Профиль обновлён", "success")
+            return redirect(url_for("client_profile"))
+        status = client.status.name if client.status else "Не задан"
+    return render_template("client/profile.html", client=client, status=status)
+
+
+@app.route("/client/subscriptions", methods=["GET"])
+@login_required
+@client_required
+def client_subscriptions():
+    with db_session() as s:
+        subs = (
+            s.execute(
+                select(Subscription)
+                .options(joinedload(Subscription.status), joinedload(Subscription.service))
+                .where(Subscription.client_id == current_user.client_id)
+                .order_by(Subscription.end_date.desc())
+            )
+            .scalars()
+            .all()
+        )
+    return render_template("client/subscriptions.html", subscriptions=subs)
+
+
+@app.route("/client/subscriptions/purchase", methods=["GET", "POST"])
+@login_required
+@client_required
+def client_subscription_purchase():
+    with db_session() as s:
+        services = s.execute(select(Service).order_by(Service.name)).scalars().all()
+        status = s.execute(select(SubscriptionStatus).where(SubscriptionStatus.code == "active")).scalar_one()
+
+        if request.method == "POST":
+            service_id = request.form.get("service_id") or None
+            visits_raw = request.form.get("visits", "5")
+            duration_raw = request.form.get("duration_days", "30")
+            try:
+                visits = int(visits_raw)
+            except ValueError:
+                visits = 5
+            try:
+                duration_days = int(duration_raw)
+            except ValueError:
+                duration_days = 30
+
+            start_date = datetime.utcnow().date()
+            end_date = start_date + timedelta(days=duration_days)
+            subscription = Subscription(
+                client_id=current_user.client_id,
+                service_id=int(service_id) if service_id and service_id.isdigit() else None,
+                start_date=start_date,
+                end_date=end_date,
+                total_visits=visits,
+                remaining_visits=visits,
+                status_id=status.id,
+            )
+            s.add(subscription)
+            s.add(
+                Notification(
+                    client_id=current_user.client_id,
+                    message="Абонемент активирован. Следите за остатком посещений.",
+                )
+            )
+            s.commit()
+            flash("Абонемент оформлен", "success")
+            return redirect(url_for("client_subscriptions"))
+
+    return render_template("client/subscription_purchase.html", services=services)
+
+
+@app.route("/client/notifications", methods=["GET", "POST"])
+@login_required
+@client_required
+def client_notifications():
+    with db_session() as s:
+        if request.method == "POST":
+            s.execute(
+                text("UPDATE notification SET is_read = 1 WHERE client_id = :cid"),
+                {"cid": current_user.client_id},
+            )
+            s.commit()
+            flash("Уведомления отмечены как прочитанные", "success")
+            return redirect(url_for("client_notifications"))
+        notifications = (
+            s.execute(
+                select(Notification)
+                .where(Notification.client_id == current_user.client_id)
+                .order_by(Notification.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+    return render_template("client/notifications.html", notifications=notifications)
+
+
+# ---- coach ----
+def _current_coach_employee(s: Session) -> Optional[Employee]:
+    if not current_user.employee_id:
+        return None
+    return s.get(Employee, current_user.employee_id)
+
+
+@app.get("/coach")
+@login_required
+@coach_required
+def coach_dashboard():
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slots = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.employee_id == employee.id)
+                .order_by(ScheduleSlot.datetime_from.asc())
+            )
+            .scalars()
+            .all()
+        )
+        slot_ids = [slot.id for slot in slots]
+        bookings_map = {}
+        if slot_ids:
+            rows = s.execute(
+                select(Booking.schedule_slot_id, func.count(Booking.id))
+                .join(Booking.status)
+                .where(Booking.schedule_slot_id.in_(slot_ids), BookingStatus.code != "cancelled")
+                .group_by(Booking.schedule_slot_id)
+            ).all()
+            bookings_map = {slot_id: count for slot_id, count in rows}
+    return render_template("coach/dashboard.html", employee=employee, slots=slots, bookings_map=bookings_map)
+
+
+@app.route("/coach/schedule/create", methods=["GET", "POST"])
+@login_required
+@coach_required
+def coach_schedule_create():
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        zones = s.execute(select(Zone).order_by(Zone.zone_name)).scalars().all()
+
+        if request.method == "POST":
+            zone_id_raw = request.form.get("zone_id", "")
+            dt_from_raw = request.form.get("datetime_from", "")
+            dt_to_raw = request.form.get("datetime_to", "")
+            capacity_raw = request.form.get("capacity", "")
+            price_raw = request.form.get("price", "")
+            lesson_type = request.form.get("lesson_type", "group")
+            is_active = bool(request.form.get("is_active"))
+
+            if not zone_id_raw or not dt_from_raw or not dt_to_raw:
+                flash("Заполните все обязательные поля", "warning")
+                return redirect(url_for("coach_schedule_create"))
+
+            zone = s.get(Zone, int(zone_id_raw))
+            if not zone:
+                flash("Зона не найдена", "danger")
+                return redirect(url_for("coach_schedule_create"))
+
+            dt_from = parse_dt_local(dt_from_raw)
+            dt_to = parse_dt_local(dt_to_raw)
+            if dt_to <= dt_from:
+                flash("Конец должен быть позже начала", "danger")
+                return redirect(url_for("coach_schedule_create"))
+
+            capacity = int(capacity_raw) if capacity_raw else zone.capacity
+            price = money(price_raw or zone.base_price)
+
+            s.add(
+                ScheduleSlot(
+                    zone_id=zone.id,
+                    employee_id=employee.id,
+                    datetime_from=dt_from,
+                    datetime_to=dt_to,
+                    capacity=capacity,
+                    price=price,
+                    lesson_type=lesson_type,
+                    is_active=is_active,
+                )
+            )
+            s.commit()
+            flash("Слот добавлен", "success")
+            return redirect(url_for("coach_dashboard"))
+
+    return render_template("coach/schedule_form.html", zones=zones, slot=None)
+
+
+@app.route("/coach/schedule/<int:slot_id>/edit", methods=["GET", "POST"])
+@login_required
+@coach_required
+def coach_schedule_edit(slot_id: int):
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slot = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.id == slot_id, ScheduleSlot.employee_id == employee.id)
+            )
+            .scalar_one_or_none()
+        )
+        if not slot:
+            flash("Слот не найден", "danger")
+            return redirect(url_for("coach_dashboard"))
+        zones = s.execute(select(Zone).order_by(Zone.zone_name)).scalars().all()
+
+        if request.method == "POST":
+            zone_id_raw = request.form.get("zone_id", "")
+            dt_from_raw = request.form.get("datetime_from", "")
+            dt_to_raw = request.form.get("datetime_to", "")
+            capacity_raw = request.form.get("capacity", "")
+            price_raw = request.form.get("price", "")
+            lesson_type = request.form.get("lesson_type", "group")
+            is_active = bool(request.form.get("is_active"))
+
+            if not zone_id_raw or not dt_from_raw or not dt_to_raw:
+                flash("Заполните все обязательные поля", "warning")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            zone = s.get(Zone, int(zone_id_raw))
+            if not zone:
+                flash("Зона не найдена", "danger")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            dt_from = parse_dt_local(dt_from_raw)
+            dt_to = parse_dt_local(dt_to_raw)
+            if dt_to <= dt_from:
+                flash("Конец должен быть позже начала", "danger")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            slot.zone_id = zone.id
+            slot.datetime_from = dt_from
+            slot.datetime_to = dt_to
+            slot.capacity = int(capacity_raw) if capacity_raw else zone.capacity
+            slot.price = money(price_raw or zone.base_price)
+            slot.lesson_type = lesson_type
+            slot.is_active = is_active
+            s.commit()
+            flash("Слот обновлён", "success")
+            return redirect(url_for("coach_dashboard"))
+
+    return render_template("coach/schedule_form.html", zones=zones, slot=slot)
+
+
+@app.get("/coach/schedule/<int:slot_id>")
+@login_required
+@coach_required
+def coach_schedule_view(slot_id: int):
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slot = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.id == slot_id, ScheduleSlot.employee_id == employee.id)
+            )
+            .scalar_one_or_none()
+        )
+        if not slot:
+            flash("Слот не найден", "danger")
+            return redirect(url_for("coach_dashboard"))
+        bookings = (
+            s.execute(
+                select(Booking)
+                .options(joinedload(Booking.client), joinedload(Booking.status))
+                .where(Booking.schedule_slot_id == slot.id)
+                .order_by(Booking.datetime_from.asc())
+            )
+            .scalars()
+            .all()
+        )
+    return render_template("coach/schedule_view.html", slot=slot, bookings=bookings)
 # ---- dashboard ----
 @app.get("/")
 @login_required
 def dashboard():
+    if current_user.role == "client":
+        return redirect(url_for("client_dashboard"))
     with db_session() as s:
         stats = {
             "zones": s.execute(select(func.count(Zone.id))).scalar_one(),

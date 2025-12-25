@@ -1,0 +1,57 @@
+{% extends "coach/base.html" %}
+{% set active = "coach_dashboard" %}
+{% set page_title = "Моё расписание" %}
+{% block content %}
+<div class="card" style="margin-bottom: 18px;">
+  <div class="card-title">
+    <h3>{{ employee.full_name }}</h3>
+    <p>Слоты, назначенные на тренера</p>
+  </div>
+  <div style="margin-top: 12px;">
+    <a class="btn btn-primary" href="{{ url_for('coach_schedule_create') }}"><i class="fa-solid fa-plus"></i> Добавить слот</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <h3>Список слотов</h3>
+    <p>Управление личными сменами</p>
+  </div>
+  <div class="table-wrap" style="margin-top: 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Дата</th>
+          <th>Время</th>
+          <th>Зона</th>
+          <th>Тип</th>
+          <th>Мест</th>
+          <th>Брони</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for slot in slots %}
+          {% set bookings_count = bookings_map.get(slot.id, 0) %}
+          <tr>
+            <td>{{ slot.datetime_from.strftime("%d.%m.%Y") }}</td>
+            <td>{{ slot.datetime_from.strftime("%H:%M") }} — {{ slot.datetime_to.strftime("%H:%M") }}</td>
+            <td>{{ slot.zone.zone_name }}</td>
+            <td>{{ "Групповое" if slot.lesson_type == "group" else "Индивидуальное" }}</td>
+            <td>{{ slot.capacity }}</td>
+            <td>{{ bookings_count }}</td>
+            <td>{{ "Активен" if slot.is_active else "Выключен" }}</td>
+            <td style="text-align:right;">
+              <a class="btn" href="{{ url_for('coach_schedule_view', slot_id=slot.id) }}">Просмотр</a>
+              <a class="btn" href="{{ url_for('coach_schedule_edit', slot_id=slot.id) }}">Редактировать</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" style="color: var(--text-secondary); padding: 18px;">Слотов пока нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

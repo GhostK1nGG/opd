@@ -1,0 +1,49 @@
+{% extends "client/base.html" %}
+{% set active = "client_bookings" %}
+{% set page_title = "Мои брони" %}
+{% block content %}
+<div class="card">
+  <div class="card-title">
+    <h3>История бронирований</h3>
+    <p>Оплаты и посещения</p>
+  </div>
+  <div class="table-wrap" style="margin-top: 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Зона</th>
+          <th>Дата</th>
+          <th>Статус брони</th>
+          <th>Посещение</th>
+          <th>Тренер</th>
+          <th>Оплачено</th>
+          <th>Итого</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for booking in bookings %}
+          {% set paid = paid_map.get(booking.id, 0) %}
+          {% set visit_status = visit_status_map.get(booking.id, "—") %}
+          <tr>
+            <td>#{{ booking.id }}</td>
+            <td>{{ booking.zone.zone_name }}</td>
+            <td>{{ booking.datetime_from.strftime("%d.%m.%Y %H:%M") }}</td>
+            <td>{{ booking.status.name }}</td>
+            <td>{{ visit_status }}</td>
+            <td>{{ booking.schedule_slot.employee.full_name if booking.schedule_slot and booking.schedule_slot.employee else "—" }}</td>
+            <td>{{ "%.2f"|format(paid) }}</td>
+            <td>{{ "%.2f"|format(booking.total_sum or 0) }}</td>
+            <td style="text-align:right;">
+              <a class="btn" href="{{ url_for('client_booking_view', booking_id=booking.id) }}">Детали</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" style="color: var(--text-secondary); padding: 18px;">Бронирований нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

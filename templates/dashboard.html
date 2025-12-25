@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% set page_title = "Дашборд" %}
+{% set page_subtitle = "Сводка по зонам, клиентам, броням и оплатам" %}
+{% set fab_url = url_for('booking_create') %}
+{% set fab_title = "Новая бронь" %}
+{% block content %}
+
+<div class="grid">
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex; gap: 16px; align-items:flex-start;">
+        <div class="card-icon" style="background: var(--primary);"><i class="fa-solid fa-border-all"></i></div>
+        <div class="card-title">
+          <h3>Зоны</h3>
+          <p>Справочник зон</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="icon-btn" href="{{ url_for('zones_list') }}" title="Открыть"><i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      {% set pct = (stats.zones * 10) if stats.zones < 10 else 100 %}
+      <div class="progress-row">
+        <div class="left"><i class="fa-solid fa-fire"></i> Всего: {{ stats.zones }}</div>
+        <div class="right">{{ pct }}%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: {{ pct }}%"></div></div>
+    </div>
+
+    <a class="btn" href="{{ url_for('zone_create') }}"><i class="fa-solid fa-plus"></i> Добавить зону</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex; gap: 16px; align-items:flex-start;">
+        <div class="card-icon" style="background: var(--success);"><i class="fa-solid fa-users"></i></div>
+        <div class="card-title">
+          <h3>Клиенты</h3>
+          <p>Контакты и примечания</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="icon-btn" href="{{ url_for('clients_list') }}" title="Открыть"><i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      {% set pct = (stats.clients % 100) %}
+      <div class="progress-row">
+        <div class="left"><i class="fa-solid fa-fire"></i> Всего: {{ stats.clients }}</div>
+        <div class="right">{{ pct }}%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: {{ pct }}%"></div></div>
+    </div>
+
+    <a class="btn" href="{{ url_for('client_create') }}"><i class="fa-solid fa-user-plus"></i> Добавить клиента</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex; gap: 16px; align-items:flex-start;">
+        <div class="card-icon" style="background: var(--warning);"><i class="fa-solid fa-calendar-check"></i></div>
+        <div class="card-title">
+          <h3>Брони</h3>
+          <p>Планирование посещений</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="icon-btn" href="{{ url_for('bookings_list') }}" title="Открыть"><i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      {% set pct = (stats.bookings % 100) %}
+      <div class="progress-row">
+        <div class="left"><i class="fa-solid fa-fire"></i> Всего: {{ stats.bookings }}</div>
+        <div class="right">{{ pct }}%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: {{ pct }}%"></div></div>
+    </div>
+
+    <a class="btn btn-primary" href="{{ url_for('booking_create') }}"><i class="fa-solid fa-plus"></i> Создать бронь</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div style="display:flex; gap: 16px; align-items:flex-start;">
+        <div class="card-icon" style="background: var(--primary-dark);"><i class="fa-solid fa-cash-register"></i></div>
+        <div class="card-title">
+          <h3>Оплаты</h3>
+          <p>История начислений</p>
+        </div>
+      </div>
+      <div class="actions">
+        <a class="icon-btn" href="{{ url_for('bookings_list') }}" title="Открыть"><i class="fa-solid fa-arrow-right"></i></a>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      {% set pct = (stats.payments % 100) %}
+      <div class="progress-row">
+        <div class="left"><i class="fa-solid fa-fire"></i> Всего: {{ stats.payments }}</div>
+        <div class="right">{{ pct }}%</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width: {{ pct }}%"></div></div>
+    </div>
+
+    <a class="btn" href="{{ url_for('bookings_list') }}"><i class="fa-solid fa-receipt"></i> Перейти к броням</a>
+  </div>
+</div>
+
+<div style="height: 24px;"></div>
+
+<div class="card">
+  <div class="card-header" style="margin-bottom: 10px;">
+    <div class="card-title">
+      <h3>Последние брони</h3>
+      <p>10 последних записей</p>
+    </div>
+    <div class="actions">
+      <a class="icon-btn" href="{{ url_for('booking_create') }}" title="Новая бронь"><i class="fa-solid fa-plus"></i></a>
+      <a class="icon-btn" href="{{ url_for('bookings_list') }}" title="Список"><i class="fa-solid fa-list"></i></a>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Клиент</th>
+          <th>Зона</th>
+          <th>Период</th>
+          <th>Статус</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for b in latest %}
+          <tr>
+            <td>#{{ b.id }}</td>
+            <td>{{ b.client.full_name }}</td>
+            <td>{{ b.zone.zone_name }}</td>
+            <td style="color: var(--text-secondary); font-size: 13px;">
+              {{ b.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ b.datetime_to.strftime("%H:%M") }}
+            </td>
+            <td><span class="badge"><i class="fa-regular fa-circle"></i> {{ b.status.name }}</span></td>
+            <td style="text-align:right;">
+              <a class="icon-btn" href="{{ url_for('booking_view', booking_id=b.id) }}" title="Открыть"><i class="fa-solid fa-arrow-right"></i></a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" style="color: var(--text-secondary); padding: 18px;">Пока нет броней</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

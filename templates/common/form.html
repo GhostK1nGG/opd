@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set page_title = title %}
+{% set page_subtitle = subtitle %}
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; gap: 12px; margin-bottom: 16px;">
+  <div>
+    <div style="font-size: 18px; font-weight: 700;">{{ title }}</div>
+    {% if subtitle %}<div style="font-size: 13px; color: var(--text-secondary);">{{ subtitle }}</div>{% endif %}
+  </div>
+  <a class="btn btn-outline" style="width:auto; padding: 10px 14px;" href="{{ back_url }}">
+    <i class="fa-solid fa-arrow-left"></i> Назад
+  </a>
+</div>
+
+<form method="post">
+  <div class="card">
+    <div style="display:grid; grid-template-columns: 1fr; gap: 14px;">
+      {% for f in fields %}
+        <div>
+          <label class="label">{{ f.label }}</label>
+          {% if f.type == 'textarea' %}
+            <textarea class="textarea" name="{{ f.name }}" {% if f.required %}required{% endif %}>{{ f.value or '' }}</textarea>
+          {% elif f.type == 'select' %}
+            <select class="select" name="{{ f.name }}" {% if f.required %}required{% endif %}>
+              {% for opt in f.options %}
+                <option value="{{ opt.value }}" {% if f.value is defined and opt.value == f.value %}selected{% endif %}>{{ opt.label }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input class="input" type="{{ f.type or 'text' }}" name="{{ f.name }}" value="{{ f.value or '' }}" {% if f.required %}required{% endif %}>
+          {% endif %}
+          {% if f.help %}<div class="help">{{ f.help }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap: 10px; margin-top: 16px;">
+      <a class="btn btn-outline" style="width:auto; padding: 10px 14px;" href="{{ back_url }}">Отмена</a>
+      <button class="btn btn-primary" style="width:auto; padding: 10px 14px;" type="submit"><i class="fa-solid fa-check"></i> Сохранить</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

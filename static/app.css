@@ -1,0 +1,4 @@
+/* Small tweaks on top of Bootstrap */
+.sidebar { min-height: 100vh; }
+.table td, .table th { vertical-align: middle; }
+.badge-soft { background: rgba(13,110,253,.1); color: #0d6efd; }

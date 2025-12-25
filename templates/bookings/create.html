@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set active = "bookings" %}
+{% set page_title = "Новая бронь" %}
+{% set page_subtitle = "Заполните данные и сохраните" %}
+{% block content %}
+
+<div class="card">
+  <form method="post" style="display:grid; gap: 14px;">
+    <div>
+      <label class="label">Клиент</label>
+      <select class="select" name="client_id" required>
+        {% for c in clients %}
+          <option value="{{ c.id }}">{{ c.full_name }}{% if c.phone %} • {{ c.phone }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="label">Зона</label>
+      <select class="select" name="zone_id" required>
+        {% for z in zones %}
+          <option value="{{ z.id }}">{{ z.zone_name }} • {{ z.type.name }} ({{ z.type.code }}) • вместимость {{ z.capacity }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div>
+        <label class="label">Начало</label>
+        <input class="input" type="datetime-local" name="dt_from" required>
+      </div>
+      <div>
+        <label class="label">Окончание</label>
+        <input class="input" type="datetime-local" name="dt_to" required>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+      <div>
+        <label class="label">Участники (чел)</label>
+        <input class="input" type="number" min="1" name="participants_count" required value="1">
+      </div>
+      <div>
+        <label class="label">Статус</label>
+        <select class="select" name="status_id" required>
+          {% for s in statuses %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; gap: 10px; justify-content:flex-end; margin-top: 6px;">
+      <a class="btn btn-outline" style="width:auto; padding: 10px 14px;" href="{{ url_for('bookings_list') }}">
+        <i class="fa-solid fa-arrow-left"></i> Назад
+      </a>
+      <button class="btn btn-primary" style="width:auto; padding: 10px 14px;" type="submit">
+        <i class="fa-solid fa-check"></i> Создать бронь
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

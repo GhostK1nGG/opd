@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% set active = "profile" %}
+{% set page_title = page_title or "Мой профиль" %}
+{% set page_subtitle = page_subtitle or "Личные данные аккаунта" %}
+
+{% block content %}
+<div class="page-grid">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-kicker">Аккаунт</div>
+        <h2>Мой профиль</h2>
+        <p class="card-subtitle">Здесь можно изменить логин и почту для восстановления доступа.</p>
+      </div>
+    </div>
+    <form method="post" class="card-form">
+      <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">Логин</label>
+          <input type="text" name="login" class="input" value="{{ acc.login }}" required>
+          <div class="form-help">Используется для входа в систему.</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Электронная почта</label>
+          <input type="email" name="email_recovery" class="input" value="{{ acc.email_recovery or '' }}">
+          <div class="form-help">Необязательно. Нужна для восстановления доступа.</div>
+        </div>
+      </div>
+
+      <div class="form-grid form-grid-secondary">
+        <div class="form-field">
+          <label class="form-label">Роль</label>
+          <div class="badge badge-soft">
+            {% if acc.role == 'admin' %}Администратор{% elif acc.role == 'staff' %}Оператор{% else %}{{ acc.role }}{% endif %}
+          </div>
+          <div class="form-help">Права доступа задаёт администратор.</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">Связанный профиль</label>
+          {% if person_name %}
+            <div class="badge badge-outline">
+              {{ person_kind }}: {{ person_name }}
+            </div>
+          {% else %}
+            <div class="text-muted">Связь с сотрудником или клиентом не настроена.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">
+          <i class="fa-regular fa-floppy-disk"></i>
+          <span>Сохранить изменения</span>
+        </button>
+        <a href="{{ url_for('account_password') }}" class="btn btn-ghost">
+          <i class="fa-solid fa-key"></i>
+          <span>Сменить пароль</span>
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card card-secondary">
+    <div class="card-header">
+      <div>
+        <div class="card-kicker">Подсказки</div>
+        <h2>Безопасность аккаунта</h2>
+        <p class="card-subtitle">Рекомендуется периодически менять пароль и не передавать его другим людям.</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <ul class="list-soft">
+        <li>Используйте сложные пароли длиной не менее 8 символов.</li>
+        <li>Не используйте один и тот же пароль для разных систем.</li>
+        <li>Не передавайте свои учётные данные третьим лицам.</li>
+        <li>При подозрении на компрометацию пароля смените его в разделе «Сменить пароль».</li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% set active = "bookings" %}
+{% set page_title = "Бронь #" ~ b.id %}
+{% set page_subtitle = b.client.full_name ~ " • " ~ b.zone.zone_name %}
+{% block content %}
+
+<div style="display:grid; grid-template-columns: 1.4fr .9fr; gap: 24px;">
+  <div style="display:grid; gap: 24px;">
+
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Детали брони</h3>
+          <p>{{ b.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ b.datetime_to.strftime("%H:%M") }} • {{ b.participants_count }} чел.</p>
+        </div>
+        <div class="actions">
+          <form method="post" action="{{ url_for('booking_delete', booking_id=b.id) }}" onsubmit="return confirm('Удалить бронь?');">
+            <button class="icon-btn" type="submit" title="Удалить"><i class="fa-solid fa-trash"></i></button>
+          </form>
+          <a class="icon-btn" href="{{ url_for('bookings_list') }}" title="Назад"><i class="fa-solid fa-arrow-left"></i></a>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Статус</div>
+          <div style="font-weight:700;">{{ b.status.name }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Сессия</div>
+          <div style="font-weight:700;">{{ "%.2f"|format(session_total) }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Услуги</div>
+          <div style="font-weight:700;">{{ "%.2f"|format(services_total) }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Итого</div>
+          <div style="font-weight:700;">{{ "%.2f"|format(total) }}</div>
+        </div>
+      </div>
+
+      <div style="height: 10px;"></div>
+
+      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Оплачено</div>
+          <div style="font-weight:700;">{{ "%.2f"|format(paid) }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Остаток</div>
+          <div style="font-weight:700;">{{ "%.2f"|format(due) }}</div>
+        </div>
+        <div>
+          <div style="color: var(--text-secondary); font-size: 12px;">Зона</div>
+          <div style="font-weight:700;">{{ b.zone.zone_name }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Услуги в брони</h3>
+          <p>booking_service (как в физической модели)</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('booking_service_add', booking_id=b.id) }}" style="display:grid; grid-template-columns: 1.4fr .7fr .7fr 1fr; gap: 12px; align-items:end;">
+        <div>
+          <label class="label">Услуга</label>
+          <select class="select" name="service_id" required>
+            {% for s in services_all %}
+              <option value="{{ s.id }}">{{ s.name }} ({{ "%.2f"|format(s.base_price) }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="label">Кол-во</label>
+          <input class="input" type="number" min="1" name="qty" value="1" required>
+        </div>
+        <div>
+          <label class="label">Цена</label>
+          <input class="input" type="number" step="0.01" min="0" name="unit_price" placeholder="по умолчанию">
+        </div>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Добавить</button>
+      </form>
+
+      <div style="height: 14px;"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Услуга</th>
+              <th style="text-align:right;">Кол-во</th>
+              <th style="text-align:right;">Цена</th>
+              <th style="text-align:right;">Сумма</th>
+              <th style="text-align:right;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ln in service_lines %}
+              <tr>
+                <td>{{ ln.name }}</td>
+                <td style="text-align:right;">{{ ln.qty }}</td>
+                <td style="text-align:right;">{{ "%.2f"|format(ln.unit_price) }}</td>
+                <td style="text-align:right;">{{ "%.2f"|format(ln.line_sum) }}</td>
+                <td style="text-align:right;">
+                  <form method="post" action="{{ url_for('booking_service_delete', booking_id=b.id, service_id=ln.service_id) }}" onsubmit="return confirm('Удалить услугу из брони?');">
+                    <button class="icon-btn" type="submit" title="Удалить" style="border:none;"><i class="fa-solid fa-trash"></i></button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" style="color: var(--text-secondary); padding: 18px;">Услуг нет</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Оплаты</h3>
+          <p>payment (учёт оплат по брони)</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('payment_add', booking_id=b.id) }}" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items:end;">
+        <div>
+          <label class="label">Сумма</label>
+          <input class="input" type="number" step="0.01" min="0" name="amount" required>
+        </div>
+        <div>
+          <label class="label">Метод</label>
+          <select class="select" name="method" required>
+            <option value="cash">Наличные</option>
+            <option value="card">Карта</option>
+            <option value="transfer">Перевод</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Добавить оплату</button>
+        <div style="grid-column: 1 / -1;">
+          <label class="label">Комментарий</label>
+          <input class="input" name="comment" placeholder="необязательно">
+        </div>
+      </form>
+
+      <div style="height: 14px;"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Метод</th>
+              <th style="text-align:right;">Сумма</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in payments %}
+              <tr>
+                <td style="color: var(--text-secondary); font-size: 13px;">{{ p.paid_at.strftime("%d.%m.%Y %H:%M") }}</td>
+                <td>{{ p.method }}</td>
+                <td style="text-align:right;">{{ "%.2f"|format(p.amount) }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="3" style="color: var(--text-secondary); padding: 18px;">Платежей нет</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:grid; gap: 24px; align-content:start;">
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Статус</h3>
+          <p>быстрое обновление статуса брони</p>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('booking_status_change', booking_id=b.id) }}" style="display:grid; gap: 12px;">
+        <div>
+          <label class="label">Статус</label>
+          <select class="select" name="status_id" required>
+            {% for s in statuses %}
+              <option value="{{ s.id }}" {% if s.id == b.status_id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-rotate"></i> Сменить статус</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Посещение (Visit)</h3>
+          <p>check-in / check-out по брони</p>
+        </div>
+      </div>
+
+      {% if visit %}
+        <div style="display:grid; gap: 10px; font-size: 14px;">
+          <div><span style="color:var(--text-secondary);">Вход:</span> <b>{{ visit.checkin_at.strftime("%d.%m.%Y %H:%M") if visit.checkin_at else "—" }}</b></div>
+          <div><span style="color:var(--text-secondary);">Выход:</span> <b>{{ visit.checkout_at.strftime("%d.%m.%Y %H:%M") if visit.checkout_at else "—" }}</b></div>
+          <div><span style="color:var(--text-secondary);">Факт. участники:</span> <b>{{ visit.actual_participants_count if visit.actual_participants_count else "—" }}</b></div>
+        </div>
+        <div style="height: 12px;"></div>
+      {% else %}
+        <div style="color: var(--text-secondary); font-size: 14px;">Посещение ещё не открыто.</div>
+        <div style="height: 12px;"></div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('visit_checkin', booking_id=b.id) }}" style="display:grid; gap: 10px; margin-bottom: 12px;">
+        <div>
+          <label class="label">Факт. участники (необязательно)</label>
+          <input class="input" type="number" min="1" name="actual_participants_count" placeholder="например, 8">
+        </div>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-door-open"></i> Check-in</button>
+      </form>
+
+      <form method="post" action="{{ url_for('visit_checkout', booking_id=b.id) }}" style="display:grid; gap: 10px;">
+        <div>
+          <label class="label">Факт. участники (обновить)</label>
+          <input class="input" type="number" min="1" name="actual_participants_count" placeholder="например, 8">
+        </div>
+        <button class="btn btn-outline" type="submit"><i class="fa-solid fa-door-closed"></i> Check-out</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-header" style="margin-bottom: 10px;">
+        <div class="card-title">
+          <h3>Навигация</h3>
+          <p>быстрые переходы</p>
+        </div>
+      </div>
+
+      <div style="display:grid; gap: 10px;">
+        <a class="btn" href="{{ url_for('bookings_list') }}"><i class="fa-solid fa-list"></i> К списку броней</a>
+        <a class="btn btn-outline" href="{{ url_for('dashboard') }}"><i class="fa-solid fa-house"></i> На дашборд</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

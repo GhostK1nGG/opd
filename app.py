@@ -33,11 +33,7 @@ from models import (
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
-
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
+app.config["SEEDED"] = False
 
 @app.before_first_request
 def ensure_seed_data():
@@ -50,6 +46,9 @@ PUBLIC_ENDPOINTS = {"login", "login_post", "client_register", "static"}
 
 @app.before_request
 def force_auth():
+    if not app.config.get("SEEDED"):
+        seed_if_empty()
+        app.config["SEEDED"] = True
     if request.endpoint is None:
         return
     if request.endpoint in PUBLIC_ENDPOINTS:
@@ -100,6 +99,18 @@ def client_required(fn):
             return login_manager.unauthorized()
         if getattr(current_user, "role", "") != "client":
             flash("Этот раздел доступен только клиентам", "warning")
+            return redirect(url_for("dashboard"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def coach_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return login_manager.unauthorized()
+        if getattr(current_user, "role", "") != "coach":
+            flash("Этот раздел доступен только тренерам", "warning")
             return redirect(url_for("dashboard"))
         return fn(*args, **kwargs)
     return wrapper
@@ -209,20 +220,25 @@ def seed_if_empty():
             trainer_position = Position(code="trainer", name="Тренер", description="Инструктор на батутной арене")
             s.add(trainer_position)
             s.flush()
-        if s.execute(select(func.count(Employee.id))).scalar_one() == 0:
-            s.add(
-                Employee(
-                    full_name="Петрова Анна",
-                    position_id=trainer_position.id,
-                    phone="+7 900 555-66-77",
-                    email="trainer@example.com",
-                )
+        trainer_employee = (
+            s.execute(select(Employee).where(Employee.position_id == trainer_position.id))
+            .scalars()
+            .first()
+        )
+        if not trainer_employee:
+            trainer_employee = Employee(
+                full_name="Петрова Анна",
+                position_id=trainer_position.id,
+                phone="+7 900 555-66-77",
+                email="trainer@example.com",
             )
+            s.add(trainer_employee)
+            s.flush()
 
         # демо-слоты расписания
         if s.execute(select(func.count(ScheduleSlot.id))).scalar_one() == 0:
             zone = s.execute(select(Zone).order_by(Zone.id)).scalars().first()
-            trainer = s.execute(select(Employee).order_by(Employee.id)).scalars().first()
+            trainer = trainer_employee or s.execute(select(Employee).order_by(Employee.id)).scalars().first()
             if zone:
                 now = datetime.now().replace(minute=0, second=0, microsecond=0)
                 for i in range(1, 6):
@@ -238,6 +254,17 @@ def seed_if_empty():
                             lesson_type="group",
                         )
                     )
+
+        if not s.execute(select(Account).where(Account.login == "coach")).scalar_one_or_none():
+            if trainer_employee:
+                s.add(
+                    Account(
+                        login="coach",
+                        password_hash=generate_password_hash("coach"),
+                        role="coach",
+                        employee_id=trainer_employee.id,
+                    )
+                )
 
         s.commit()
 
@@ -258,6 +285,8 @@ def login_post():
             login_user(acc)
             if acc.role == "client":
                 return redirect(url_for("client_dashboard"))
+            if acc.role == "coach":
+                return redirect(url_for("coach_dashboard"))
             return redirect(url_for("dashboard"))
     flash("Неверный логин или пароль", "danger")
     return redirect(url_for("login"))
@@ -801,6 +830,195 @@ def client_notifications():
             .all()
         )
     return render_template("client/notifications.html", notifications=notifications)
+
+
+# ---- coach ----
+def _current_coach_employee(s: Session) -> Optional[Employee]:
+    if not current_user.employee_id:
+        return None
+    return s.get(Employee, current_user.employee_id)
+
+
+@app.get("/coach")
+@login_required
+@coach_required
+def coach_dashboard():
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slots = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.employee_id == employee.id)
+                .order_by(ScheduleSlot.datetime_from.asc())
+            )
+            .scalars()
+            .all()
+        )
+        slot_ids = [slot.id for slot in slots]
+        bookings_map = {}
+        if slot_ids:
+            rows = s.execute(
+                select(Booking.schedule_slot_id, func.count(Booking.id))
+                .join(Booking.status)
+                .where(Booking.schedule_slot_id.in_(slot_ids), BookingStatus.code != "cancelled")
+                .group_by(Booking.schedule_slot_id)
+            ).all()
+            bookings_map = {slot_id: count for slot_id, count in rows}
+    return render_template("coach/dashboard.html", employee=employee, slots=slots, bookings_map=bookings_map)
+
+
+@app.route("/coach/schedule/create", methods=["GET", "POST"])
+@login_required
+@coach_required
+def coach_schedule_create():
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        zones = s.execute(select(Zone).order_by(Zone.zone_name)).scalars().all()
+
+        if request.method == "POST":
+            zone_id_raw = request.form.get("zone_id", "")
+            dt_from_raw = request.form.get("datetime_from", "")
+            dt_to_raw = request.form.get("datetime_to", "")
+            capacity_raw = request.form.get("capacity", "")
+            price_raw = request.form.get("price", "")
+            lesson_type = request.form.get("lesson_type", "group")
+            is_active = bool(request.form.get("is_active"))
+
+            if not zone_id_raw or not dt_from_raw or not dt_to_raw:
+                flash("Заполните все обязательные поля", "warning")
+                return redirect(url_for("coach_schedule_create"))
+
+            zone = s.get(Zone, int(zone_id_raw))
+            if not zone:
+                flash("Зона не найдена", "danger")
+                return redirect(url_for("coach_schedule_create"))
+
+            dt_from = parse_dt_local(dt_from_raw)
+            dt_to = parse_dt_local(dt_to_raw)
+            if dt_to <= dt_from:
+                flash("Конец должен быть позже начала", "danger")
+                return redirect(url_for("coach_schedule_create"))
+
+            capacity = int(capacity_raw) if capacity_raw else zone.capacity
+            price = money(price_raw or zone.base_price)
+
+            s.add(
+                ScheduleSlot(
+                    zone_id=zone.id,
+                    employee_id=employee.id,
+                    datetime_from=dt_from,
+                    datetime_to=dt_to,
+                    capacity=capacity,
+                    price=price,
+                    lesson_type=lesson_type,
+                    is_active=is_active,
+                )
+            )
+            s.commit()
+            flash("Слот добавлен", "success")
+            return redirect(url_for("coach_dashboard"))
+
+    return render_template("coach/schedule_form.html", zones=zones, slot=None)
+
+
+@app.route("/coach/schedule/<int:slot_id>/edit", methods=["GET", "POST"])
+@login_required
+@coach_required
+def coach_schedule_edit(slot_id: int):
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slot = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.id == slot_id, ScheduleSlot.employee_id == employee.id)
+            )
+            .scalar_one_or_none()
+        )
+        if not slot:
+            flash("Слот не найден", "danger")
+            return redirect(url_for("coach_dashboard"))
+        zones = s.execute(select(Zone).order_by(Zone.zone_name)).scalars().all()
+
+        if request.method == "POST":
+            zone_id_raw = request.form.get("zone_id", "")
+            dt_from_raw = request.form.get("datetime_from", "")
+            dt_to_raw = request.form.get("datetime_to", "")
+            capacity_raw = request.form.get("capacity", "")
+            price_raw = request.form.get("price", "")
+            lesson_type = request.form.get("lesson_type", "group")
+            is_active = bool(request.form.get("is_active"))
+
+            if not zone_id_raw or not dt_from_raw or not dt_to_raw:
+                flash("Заполните все обязательные поля", "warning")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            zone = s.get(Zone, int(zone_id_raw))
+            if not zone:
+                flash("Зона не найдена", "danger")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            dt_from = parse_dt_local(dt_from_raw)
+            dt_to = parse_dt_local(dt_to_raw)
+            if dt_to <= dt_from:
+                flash("Конец должен быть позже начала", "danger")
+                return redirect(url_for("coach_schedule_edit", slot_id=slot_id))
+
+            slot.zone_id = zone.id
+            slot.datetime_from = dt_from
+            slot.datetime_to = dt_to
+            slot.capacity = int(capacity_raw) if capacity_raw else zone.capacity
+            slot.price = money(price_raw or zone.base_price)
+            slot.lesson_type = lesson_type
+            slot.is_active = is_active
+            s.commit()
+            flash("Слот обновлён", "success")
+            return redirect(url_for("coach_dashboard"))
+
+    return render_template("coach/schedule_form.html", zones=zones, slot=slot)
+
+
+@app.get("/coach/schedule/<int:slot_id>")
+@login_required
+@coach_required
+def coach_schedule_view(slot_id: int):
+    with db_session() as s:
+        employee = _current_coach_employee(s)
+        if not employee:
+            flash("Профиль тренера не найден", "danger")
+            return redirect(url_for("logout"))
+        slot = (
+            s.execute(
+                select(ScheduleSlot)
+                .options(joinedload(ScheduleSlot.zone))
+                .where(ScheduleSlot.id == slot_id, ScheduleSlot.employee_id == employee.id)
+            )
+            .scalar_one_or_none()
+        )
+        if not slot:
+            flash("Слот не найден", "danger")
+            return redirect(url_for("coach_dashboard"))
+        bookings = (
+            s.execute(
+                select(Booking)
+                .options(joinedload(Booking.client), joinedload(Booking.status))
+                .where(Booking.schedule_slot_id == slot.id)
+                .order_by(Booking.datetime_from.asc())
+            )
+            .scalars()
+            .all()
+        )
+    return render_template("coach/schedule_view.html", slot=slot, bookings=bookings)
 # ---- dashboard ----
 @app.get("/")
 @login_required

@@ -1,0 +1,53 @@
+{% extends "coach/base.html" %}
+{% set active = "coach_dashboard" %}
+{% set page_title = "Слот тренера" %}
+{% block content %}
+<div class="card" style="margin-bottom: 18px;">
+  <div class="card-title">
+    <h3>{{ slot.zone.zone_name }}</h3>
+    <p>{{ slot.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ slot.datetime_to.strftime("%H:%M") }}</p>
+  </div>
+  <div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
+    <span class="badge">Тип: {{ "Групповое" if slot.lesson_type == "group" else "Индивидуальное" }}</span>
+    <span class="badge">Мест: {{ slot.capacity }}</span>
+    <span class="badge">Цена: {{ "%.2f"|format(slot.price) }}</span>
+    <span class="badge">{{ "Активен" if slot.is_active else "Выключен" }}</span>
+  </div>
+  <div style="margin-top: 12px;">
+    <a class="btn" href="{{ url_for('coach_schedule_edit', slot_id=slot.id) }}">Редактировать</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <h3>Брони по слоту</h3>
+    <p>Записанные клиенты</p>
+  </div>
+  <div class="table-wrap" style="margin-top: 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Клиент</th>
+          <th>Участники</th>
+          <th>Статус</th>
+          <th>Итого</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for booking in bookings %}
+          <tr>
+            <td>#{{ booking.id }}</td>
+            <td>{{ booking.client.full_name }}</td>
+            <td>{{ booking.participants_count }}</td>
+            <td>{{ booking.status.name }}</td>
+            <td>{{ "%.2f"|format(booking.total_sum or 0) }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" style="color: var(--text-secondary); padding: 18px;">Броней нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

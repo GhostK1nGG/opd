@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set page_title = "Регистрация клиента" %}
+{% block content %}
+<div class="card">
+  <div class="auth-title">
+    <i class="fa-solid fa-user-plus"></i>
+    <div>
+      <div style="font-size:18px; font-weight:700; color: var(--text-primary);">JumpClient</div>
+      <div style="font-size:13px; color: var(--text-secondary);">Создание клиентского аккаунта</div>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('client_register') }}">
+    <div style="display:grid; gap: 14px; margin-top: 12px;">
+      <div>
+        <label class="label">ФИО</label>
+        <input class="input" name="full_name" required>
+      </div>
+      <div>
+        <label class="label">Телефон</label>
+        <input class="input" name="phone">
+      </div>
+      <div>
+        <label class="label">Email</label>
+        <input class="input" type="email" name="email">
+      </div>
+      <div>
+        <label class="label">Дата рождения</label>
+        <input class="input" type="date" name="dob">
+      </div>
+      <div>
+        <label class="label">Логин</label>
+        <input class="input" name="login" required>
+      </div>
+      <div>
+        <label class="label">Пароль</label>
+        <input class="input" type="password" name="password" required>
+      </div>
+      <div>
+        <label class="label">Повторите пароль</label>
+        <input class="input" type="password" name="password2" required>
+      </div>
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-user-check"></i> Создать аккаунт</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

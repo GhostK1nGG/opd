@@ -1,0 +1,94 @@
+{% extends "client/base.html" %}
+{% set active = "client_dashboard" %}
+{% set page_title = "Главная" %}
+{% block content %}
+<div class="grid" style="margin-bottom: 20px;">
+  <div class="card">
+    <div class="card-title">
+      <h3>Статус клиента</h3>
+      <p>Текущий статус учётной записи</p>
+    </div>
+    <div style="margin-top: 10px;">
+      <span class="badge"><i class="fa-regular fa-circle-check"></i> {{ client.status.name if client.status else 'Не задан' }}</span>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <h3>Быстрые действия</h3>
+      <p>Запланируйте следующее посещение</p>
+    </div>
+    <div style="display:flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+      <a class="btn btn-primary" href="{{ url_for('client_schedule') }}"><i class="fa-regular fa-calendar"></i> Записаться</a>
+      <a class="btn" href="{{ url_for('client_bookings') }}"><i class="fa-solid fa-ticket"></i> Мои брони</a>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-title">
+      <h3>Ближайшие брони</h3>
+      <p>Следующие посещения</p>
+    </div>
+    <div style="margin-top: 12px;">
+      {% if upcoming %}
+        {% for booking in upcoming %}
+          <div style="display:flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border);">
+            <div>
+              <div style="font-weight: 600;">{{ booking.zone.zone_name }}</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">
+                {{ booking.datetime_from.strftime("%d.%m.%Y %H:%M") }} — {{ booking.datetime_to.strftime("%H:%M") }}
+              </div>
+            </div>
+            <div class="badge">{{ booking.status.name }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="color: var(--text-secondary); font-size: 13px;">Нет запланированных посещений.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <h3>Активные абонементы</h3>
+      <p>Остаток посещений</p>
+    </div>
+    <div style="margin-top: 12px;">
+      {% if subscriptions %}
+        {% for sub in subscriptions %}
+          <div style="display:flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border);">
+            <div>
+              <div style="font-weight: 600;">{{ sub.service.name if sub.service else 'Абонемент на все зоны' }}</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">до {{ sub.end_date.strftime("%d.%m.%Y") }}</div>
+            </div>
+            <div class="badge">Осталось {{ sub.remaining_visits }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="color: var(--text-secondary); font-size: 13px;">Абонементов пока нет.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <h3>Уведомления</h3>
+      <p>Последние сообщения</p>
+    </div>
+    <div style="margin-top: 12px;">
+      {% if notifications %}
+        {% for note in notifications %}
+          <div style="padding: 10px 0; border-bottom: 1px solid var(--border);">
+            <div style="font-size: 13px;">{{ note.message }}</div>
+            <div style="font-size: 11px; color: var(--text-secondary);">{{ note.created_at.strftime("%d.%m.%Y %H:%M") }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p style="color: var(--text-secondary); font-size: 13px;">Нет новых уведомлений.</p>
+      {% endif %}
+      <div style="margin-top: 12px;">
+        <a class="btn" href="{{ url_for('client_notifications') }}">Все уведомления</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

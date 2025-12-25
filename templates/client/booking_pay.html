@@ -1,0 +1,27 @@
+{% extends "client/base.html" %}
+{% set active = "client_bookings" %}
+{% set page_title = "Оплата брони" %}
+{% block content %}
+<div class="card">
+  <div class="card-title">
+    <h3>Оплата брони №{{ booking.id }}</h3>
+    <p>Выберите способ оплаты</p>
+  </div>
+  <div style="margin-top: 12px; display: grid; gap: 8px;">
+    <div>Итого: <strong>{{ "%.2f"|format(total_sum) }}</strong></div>
+    <div>Оплачено: <strong>{{ "%.2f"|format(total_paid) }}</strong></div>
+    <div>К оплате: <strong>{{ "%.2f"|format(due) }}</strong></div>
+  </div>
+  <form method="post" style="margin-top: 16px; display: grid; gap: 12px; max-width: 320px;">
+    <div>
+      <label class="label">Метод оплаты</label>
+      <select class="select" name="method">
+        <option value="card">Банковская карта</option>
+        <option value="sbp">СБП</option>
+        <option value="cash">Наличными при посещении</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-credit-card"></i> Оплатить</button>
+  </form>
+</div>
+{% endblock %}

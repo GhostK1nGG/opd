@@ -1,0 +1,39 @@
+{% extends "client/base.html" %}
+{% set active = "client_subscriptions" %}
+{% set page_title = "Покупка абонемента" %}
+{% block content %}
+<div class="card">
+  <div class="card-title">
+    <h3>Новый абонемент</h3>
+    <p>Выберите услугу и количество посещений</p>
+  </div>
+  <form method="post" style="margin-top: 14px; display: grid; gap: 12px; max-width: 420px;">
+    <div>
+      <label class="label">Услуга</label>
+      <select class="select" name="service_id">
+        <option value="">На все зоны</option>
+        {% for service in services %}
+          <option value="{{ service.id }}">{{ service.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="label">Количество посещений</label>
+      <select class="select" name="visits">
+        <option value="5">5 посещений</option>
+        <option value="10">10 посещений</option>
+        <option value="20">20 посещений</option>
+      </select>
+    </div>
+    <div>
+      <label class="label">Срок действия</label>
+      <select class="select" name="duration_days">
+        <option value="30">30 дней</option>
+        <option value="90">90 дней</option>
+        <option value="180">180 дней</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" type="submit"><i class="fa-solid fa-id-card-clip"></i> Оформить</button>
+  </form>
+</div>
+{% endblock %}

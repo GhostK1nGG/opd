@@ -6,7 +6,7 @@
     <i class="fa-solid fa-person-jumping"></i>
     <div>
       <div style="font-size:18px; font-weight:700; color: var(--text-primary);">JumpAdmin</div>
-      <div style="font-size:13px; color: var(--text-secondary);">Вход в админ-панель батутного центра</div>
+      <div style="font-size:13px; color: var(--text-secondary);">Вход в систему батутного центра</div>
     </div>
   </div>
 
@@ -25,7 +25,10 @@
   </form>
 
   <div style="margin-top: 14px; font-size: 12px; color: var(--text-secondary);">
-    Тестовый вход: <b>admin / admin</b>
+    Тестовый вход: <b>admin / admin</b> или <b>client / client</b>
+  </div>
+  <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+    Нет учётной записи? <a href="{{ url_for('client_register') }}">Регистрация клиента</a>
   </div>
 </div>
 {% endblock %}

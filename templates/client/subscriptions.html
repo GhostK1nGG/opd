@@ -1,0 +1,45 @@
+{% extends "client/base.html" %}
+{% set active = "client_subscriptions" %}
+{% set page_title = "Абонементы" %}
+{% block content %}
+<div class="card" style="margin-bottom: 18px;">
+  <div class="card-title">
+    <h3>Покупка абонемента</h3>
+    <p>Выберите пакет посещений</p>
+  </div>
+  <div style="margin-top: 12px;">
+    <a class="btn btn-primary" href="{{ url_for('client_subscription_purchase') }}"><i class="fa-solid fa-plus"></i> Купить абонемент</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-title">
+    <h3>Мои абонементы</h3>
+    <p>Сроки и остаток посещений</p>
+  </div>
+  <div class="table-wrap" style="margin-top: 12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Услуга</th>
+          <th>Период</th>
+          <th>Остаток</th>
+          <th>Статус</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sub in subscriptions %}
+          <tr>
+            <td>{{ sub.service.name if sub.service else "Абонемент на все зоны" }}</td>
+            <td>{{ sub.start_date.strftime("%d.%m.%Y") }} — {{ sub.end_date.strftime("%d.%m.%Y") }}</td>
+            <td>{{ sub.remaining_visits }} / {{ sub.total_visits }}</td>
+            <td>{{ sub.status.name }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" style="color: var(--text-secondary); padding: 18px;">Абонементов нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
